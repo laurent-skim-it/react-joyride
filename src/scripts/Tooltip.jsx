@@ -2,16 +2,32 @@ import React from 'react';
 import { browser } from './utils';
 
 export default class JoyrideTooltip extends React.Component {
+  constructor(props) {
+    super(props);
+    this.state = {};
+  }
+
   static propTypes = {
+    allowClicksThruHole: React.PropTypes.bool.isRequired,
     animate: React.PropTypes.bool.isRequired,
     buttons: React.PropTypes.object.isRequired,
-    cssPosition: React.PropTypes.string.isRequired,
     disableOverlay: React.PropTypes.bool,
+    holePadding: React.PropTypes.number,
     onClick: React.PropTypes.func.isRequired,
     onRender: React.PropTypes.func.isRequired,
+    // position of tooltip with respect to target
+    position: React.PropTypes.oneOf([
+      'top', 'top-left', 'top-right',
+      'bottom', 'bottom-left', 'bottom-right',
+      'right', 'left',
+    ]).isRequired,
+    // sanitized selector string
+    selector: React.PropTypes.string.isRequired,
     showOverlay: React.PropTypes.bool.isRequired,
     standalone: React.PropTypes.bool,
     step: React.PropTypes.object.isRequired,
+    // DOM element to target
+    target: React.PropTypes.object.isRequired,
     type: React.PropTypes.string.isRequired,
     xPos: React.PropTypes.oneOfType([
       React.PropTypes.number,
@@ -27,22 +43,98 @@ export default class JoyrideTooltip extends React.Component {
     buttons: {
       primary: 'Close'
     },
-    cssPosition: 'absolute',
     step: {},
     xPos: -1000,
     yPos: -1000
   };
 
+  componentWillMount() {
+    const opts = this.setOpts(this.props);
+    const styles = this.setStyles(this.props.step.style, opts, this.props);
+    this.setState({ styles, opts });
+  }
+
   componentDidMount() {
-    this.forceUpdate(this.props.onRender);
+    const { onRender } = this.props;
+
+    this.forceUpdate();
+    onRender();
+
+    if (this.props.showOverlay && this.props.allowClicksThruHole) {
+      document.addEventListener('mousemove', this.handleMouseMove, false);
+    }
+  }
+
+  componentWillReceiveProps(nextProps) {
+    const {
+      allowClicksThruHole: nextAllowClicksThruHole,
+      animate: nextAnimate,
+      standalone: nextStandalone,
+      step: nextStep,
+      holePadding: nextHolePadding,
+      position: nextPosition,
+      xPos: nextXPos,
+      yPos: nextYPos,
+      showOverlay: nextShowOverlay,
+    } = nextProps;
+    const {
+      allowClicksThruHole,
+      animate,
+      standalone,
+      step,
+      holePadding,
+      position,
+      xPos,
+      yPos,
+      showOverlay,
+    } = this.props;
+
+    if (
+      nextAnimate !== animate ||
+      nextStandalone !== standalone ||
+      nextStep !== step ||
+      nextHolePadding !== holePadding ||
+      nextPosition !== position ||
+      nextXPos !== xPos ||
+      nextYPos !== yPos
+    ) {
+      const opts = this.setOpts(nextProps);
+      const styles = this.setStyles(nextProps.step.style, opts, nextProps);
+      this.setState({ styles, opts });
+    }
+
+    // If showOverlay changed, we might need to allow clicks in the overlay hole
+    if (nextShowOverlay !== showOverlay) {
+      if (nextShowOverlay && nextAllowClicksThruHole) {
+        document.addEventListener('mousemove', this.handleMouseMove, false);
+      }
+      else {
+        document.removeEventListener('mousemove', this.handleMouseMove, false);
+      }
+    }
+
+    // If allowClickInHole changed, we need to enable or disable clicking in the overlay hole
+    if (nextAllowClicksThruHole !== allowClicksThruHole) {
+      if (nextAllowClicksThruHole) {
+        document.addEventListener('mousemove', this.handleMouseMove, false);
+      }
+      else {
+        document.removeEventListener('mousemove', this.handleMouseMove, false);
+      }
+    }
   }
 
   componentDidUpdate(prevProps) {
-    const { onRender, step } = this.props;
+    const { onRender, selector } = this.props;
 
-    if (prevProps.step.selector !== step.selector) {
-      this.forceUpdate(onRender);
+    if (prevProps.selector !== selector) {
+      this.forceUpdate();
+      onRender();
     }
+  }
+
+  componentWillUnmount() {
+    document.removeEventListener('mousemove', this.handleMouseMove, false);
   }
 
   getArrowPosition(position) {
@@ -109,8 +201,21 @@ export default class JoyrideTooltip extends React.Component {
     return `data:image/svg+xml,%3Csvg%20width%3D%22${width}%22%20height%3D%22${height}%22%20version%3D%221.1%22%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%3E%3Cpolygon%20points%3D%220%2C%200%208%2C%208%2016%2C0%22%20fill%3D%22${opts.color}%22%20transform%3D%22scale%28${opts.scale}%29%20rotate%28${rotate}%29%22%3E%3C%2Fpolygon%3E%3C%2Fsvg%3E`;
   }
 
-  setStyles(stepStyles, opts) {
-    const { cssPosition, xPos, yPos } = this.props;
+  /**
+   * Calculate styles based on those passed in with the step, or calculated opts, or props
+   *
+   * @param {Object} stepStyles              Style object provided with step
+   * @param {Object} opts                    Options object calculated from this.setOpts
+   * @param {string} opts.arrowPosition      Used for left/right positioing of arrow when on bottom or top
+   * @param {Object} opts.rect               BoundingClientRect of target element
+   * @param {string} opts.positonBaseClass   Base position of tooltip (top, bottom, left, right)
+   * @param {Object} props                   Positioning properties: cssPosition, xPos, and yPos
+   * @returns {Object}                       Calculated styles for arrow, buttons, header, hole, and tooltip
+   */
+  setStyles(stepStyles, opts, props) {
+    const { holePadding, step, xPos, yPos } = props;
+    const isFixed = step.isFixed === true;
+
     const styles = {
       arrow: {
         left: opts.arrowPosition
@@ -119,18 +224,21 @@ export default class JoyrideTooltip extends React.Component {
       header: {},
       hole: {},
       tooltip: {
-        position: cssPosition === 'fixed' ? 'fixed' : 'absolute',
+        position: isFixed ? 'fixed' : 'absolute',
         top: Math.round(yPos),
         left: Math.round(xPos)
       }
     };
 
     styles.hole = {
-      top: Math.round((opts.rect.top - document.body.getBoundingClientRect().top) - 5),
-      left: Math.round(opts.rect.left - 5),
-      width: Math.round(opts.rect.width + 10),
-      height: Math.round(opts.rect.height + 10)
+      top: Math.round((opts.rect.top - (isFixed ? 0 : document.body.getBoundingClientRect().top)) - holePadding),
+      left: Math.round(opts.rect.left - holePadding),
+      width: Math.round(opts.rect.width + (holePadding * 2)),
+      height: Math.round(opts.rect.height + (holePadding * 2))
     };
+    if (isFixed) {
+      styles.hole.position = 'fixed';
+    }
 
     styles.buttons = {
       back: {},
@@ -203,16 +311,15 @@ export default class JoyrideTooltip extends React.Component {
     return styles;
   }
 
-  setOpts() {
-    const { animate, standalone, step, xPos } = this.props;
+  setOpts(props) {
+    const { animate, position, standalone, target, xPos } = props;
 
-    const target = document.querySelector(step.selector);
     const tooltip = document.querySelector('.joyride-tooltip');
 
     const opts = {
       classes: ['joyride-tooltip'],
       rect: target.getBoundingClientRect(),
-      positionClass: step.position
+      positionClass: position,
     };
 
     opts.positonBaseClass = opts.positionClass.match(/-/) ? opts.positionClass.split('-')[0] : opts.positionClass;
@@ -246,17 +353,29 @@ export default class JoyrideTooltip extends React.Component {
     return opts;
   }
 
-  render() {
-    const { buttons, disableOverlay, onClick, showOverlay, step, type } = this.props;
+  handleMouseMove = (e) => {
+    const event = e || window.e;
+    const hole = this.state.styles.hole;
+    const inHoleHeight = (event.pageY >= hole.top && event.pageY <= hole.top + hole.height);
+    const inHoleWidth = (event.pageX >= hole.left && event.pageX <= hole.left + hole.width);
+    const inHole = inHoleWidth && inHoleHeight;
+    if (inHole && !this.state.mouseOverHole) {
+      this.setState({ mouseOverHole: true });
+    }
+    if (!inHole && this.state.mouseOverHole) {
+      this.setState({ mouseOverHole: false });
+    }
+  };
 
-    const target = document.querySelector(step.selector);
+  render() {
+    const { buttons, disableOverlay, onClick, selector, showOverlay, step, target, type } = this.props;
 
     if (!target) {
       return undefined;
     }
 
-    const opts = this.setOpts();
-    const styles = this.setStyles(step.style, opts);
+    const opts = this.state.opts;
+    const styles = this.state.styles;
     const output = {};
 
     if (step.title) {
@@ -299,7 +418,7 @@ export default class JoyrideTooltip extends React.Component {
     }
 
     output.tooltipComponent = (
-      <div className={opts.classes.join(' ')} style={styles.tooltip} data-target={step.selector}>
+      <div className={opts.classes.join(' ')} style={styles.tooltip} data-target={selector}>
         <div
           className={`joyride-tooltip__triangle joyride-tooltip__triangle-${opts.positionClass}`}
           style={styles.arrow} />
@@ -336,13 +455,16 @@ export default class JoyrideTooltip extends React.Component {
       return output.tooltipComponent;
     }
 
+    const overlayStyles = {
+      cursor: disableOverlay ? 'default' : 'pointer',
+      height: document.body.clientHeight,
+      pointerEvents: this.state.mouseOverHole ? 'none' : 'auto',
+    };
+
     return (
       <div
         className="joyride-overlay"
-        style={{
-          cursor: disableOverlay ? 'default' : 'pointer',
-          height: document.body.clientHeight
-        }}
+        style={overlayStyles}
         data-type="close"
         onClick={!disableOverlay ? onClick : undefined}>
         {output.hole}

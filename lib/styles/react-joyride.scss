@@ -30,7 +30,7 @@ $joyride-header-border-width: 1px !default;
 
 $joyride-button-bg-color: $joyride-color !default;
 $joyride-button-color: #fff !default;
-$joyride-button-radius: 4px !default;
+$joyride-button-border-radius: 4px !default;
 
 $joyride-back-button-color: $joyride-color !default;
 $joyride-skip-button-color: #ccc !default;
@@ -60,7 +60,6 @@ $joyride-tooltip-arrow-scale: ($joyride-tooltip-arrow-size / ($joyride-tooltip-a
 }
 
 .joyride {
-
   &-beacon {
     display: inline-block;
     height: $joyride-beacon-size;
@@ -88,6 +87,7 @@ $joyride-tooltip-arrow-scale: ($joyride-tooltip-arrow-size / ($joyride-tooltip-a
       border: ($joyride-beacon-size / 18) solid $joyride-beacon-color;
       border-radius: 50%;
       display: block;
+      box-sizing: border-box;
       height: 100%;
       left: 0;
       opacity: 0.9;
@@ -119,6 +119,7 @@ $joyride-tooltip-arrow-scale: ($joyride-tooltip-arrow-size / ($joyride-tooltip-a
   }
 
   &-tooltip {
+    pointer-events: auto;
     background-color: $joyride-tooltip-bg-color;
     border-radius: $joyride-tooltip-border-radius;
     color: $joyride-tooltip-color;
@@ -260,12 +261,18 @@ $joyride-tooltip-arrow-scale: ($joyride-tooltip-arrow-size / ($joyride-tooltip-a
       color: $joyride-header-color;
       font-size: $joyride-header-font-size;
       padding-bottom: 6px;
+      padding-right: 18px;
       position: relative;
+
+      ~ .joyride-tooltip__main {
+        padding: 12px 0 18px;
+      }
     }
 
     &__main {
       font-size: $joyride-tooltip-font-size;
-      padding: 12px 0 18px;
+      padding-bottom: 18px;
+      padding-right: 18px;
     }
 
     &__footer {
@@ -275,7 +282,7 @@ $joyride-tooltip-arrow-scale: ($joyride-tooltip-arrow-size / ($joyride-tooltip-a
     &__button {
       &--primary {
         background-color: $joyride-button-bg-color;
-        border-radius: $joyride-button-radius;
+        border-radius: $joyride-button-border-radius;
         color: $joyride-button-color;
         outline: none;
         padding: 6px 12px;
